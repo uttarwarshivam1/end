@@ -1,0 +1,427 @@
+Skip to content
+Search or jump to…
+Pull requests
+Issues
+Codespaces
+Marketplace
+Explore
+ 
+@uttarwarshivam1 
+Varadrajan41
+/
+txt
+Public
+Fork your own copy of Varadrajan41/txt
+Code
+Issues
+Pull requests
+Actions
+Projects
+Security
+Insights
+txt/txt (2).txt
+@Varadrajan41
+Varadrajan41 txt
+Latest commit daf18cf 2 hours ago
+ History
+ 1 contributor
+383 lines (286 sloc)  8.7 KB
+
+Group--com.example
+Version-- 0.0.1-SNAPSHOT
+
+
+Dependencies-[Lombok,MySQL Driver,Spring Boot DevTools,Spring data jpa,spring web,validation]+[Mapper,springdoc-ui]
+<dependency>
+			<groupId>org.modelmapper</groupId>
+			<artifactId>modelmapper</artifactId>
+			<version>3.1.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-ui</artifactId>
+			<version>1.6.4</version>
+		</dependency>
+--------------------------------------------------------------------------------------------
+application.properties
+
+#Tomcat server port number 8080
+#server.port=7070
+#context path default value : empty
+#server.servlet.context-path=/day9_boot
+#DB properties
+spring.datasource.url=jdbc:mysql://localhost:3306/dac22?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+spring.datasource.username=root
+spring.datasource.password=Ganpati41@
+# JPA properties
+spring.jpa.show-sql = true
+spring.jpa.hibernate.ddl-auto = update
+#spring.jpa.properties.hibernate.dialect = org.hibernate.dialect.MySQL5Dialect
+#logging.level.org.springframework.orm.hibernate5=DEBUG
+
+# Spring MVC ViewResolver related
+#spring.mvc.view.prefix=/WEB-INF/views
+#spring.mvc.view.suffix=.jsp
+#Disable open session in view 
+spring.jpa.open-in-view=false
+#property to disable hibernateLazyInitializer during initialized proxies
+#spring.jackson.serialization.FAIL_ON_EMPTY_BEANS=false
+
+---------------------------------------------------------------------------------------------
+src/main/java 
+
+1.com.app
+----------
+
+@Bean
+	public ModelMapper configureMapper() {
+		
+		System.out.println("in config mapper...");
+		ModelMapper modelMapper= new ModelMapper();
+		modelMapper.getConfiguration().setMatchingStrategy(MatchingStrategies.STRICT);
+		
+		
+		return modelMapper;//method rets bean instance to SC
+	}
+
+2.com.app.pojos
+----------------
+
+2.1BaseEntity
+@MappedSuperclass
+public class BaseEntity {
+	@Id
+	@GeneratedValue(strategy=GenerationType.IDENTITY)
+	private Integer id;
+
+}
+
+2.2Student
+
+@Entity
+@Table(name="student_tbl")
+public class Student extends BaseEntity {
+	
+	@Column(name="Fname")
+	private String firstName;
+	@Column(name="Lname")
+	private String lastName;
+	@Column(name="Branch")
+	private String branch;
+	
+	@Column(name="Email",unique=true,length=30)
+	private String email;
+	
+	@Column(name="Password")
+	@JsonProperty(access=Access.WRITE_ONLY)
+	private String password;
+	
+	@OneToMany(mappedBy="student",cascade=CascadeType.ALL,fetch=FetchType.LAZY,orphanRemoval = true)
+	private List<Course> courses=new ArrayList<>();
+	
+	public void addCourse(Course course) {
+		courses.add(course);
+		course.setStudent(this);
+	}
+
+}
+
+2.3course
+
+@Entity
+@Table(name="course_tbl")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+
+public class Course extends BaseEntity {
+	private String name;
+	
+	private String description;
+	
+//Make getters n setters of this property
+	@ManyToOne
+	@JoinColumn(name="student_id")
+	private Student student;
+	
+}
+
+Note:Notes.java POJO
+@Entity
+@Table(name = "notes")
+public class Note extends BaseEntity{
+	private String title;
+	private String description;
+	
+	@UpdateTimestamp
+	private LocalDate updateDate;
+	
+	@ManyToOne
+	@JoinColumn(name = "user_Id")
+	private User user;
+	
+	public User getUser() {
+		return user;
+	}
+
+	public void setUser(User user) {
+		this.user = user;
+	}
+
+------------------------------------------------
+
+3.com.app.repository
+------------------
+
+StudentRepository
+public interface StudentRepository extends JpaRepository<Student, Integer> 
+
+--------------------------------------------------------------------------------
+
+
+4.com.app.service
+-------------------
+StudentServiceImpl
+
+
+@Service
+@Transactional
+public class StudentServiceImpl implements StudentService {
+	
+	@Autowired
+	private StudentRepository studentRepo;
+	
+	@Autowired
+	private ModelMapper mapper;
+	
+	@PostConstruct
+	public void init(){
+		System.out.println("in init "+mapper);
+	}
+	
+
+	@Override
+	public Student addStudent(Student student) {
+		return studentRepo.save(student);
+	}
+
+
+	@Override
+	public Student getStudentById(Integer id) {
+		return studentRepo.findById(id).orElseThrow(()->new ResponseException("Invalid Id"));
+	}
+
+
+	@Override
+	public Student updateStudent(Student student) {
+		
+		if( studentRepo.existsById(student.getId()))
+		{
+				return studentRepo.save(student);
+		}
+		throw new ResponseException("student does not exist");
+	}
+
+
+	@Override
+	public void deleteStudentById(Integer id) {
+	 
+			studentRepo.deleteById(id);
+		
+	}
+
+}
+Note:AuthenticateUser(Student)-->
+@Override
+	public User authenticateUser(LoginRequestDto dto) {
+		return userRepo.findByEmailAndPassword(dto.getEmail(), dto.getPassword())
+				.orElseThrow(() -> new ResourceNotFoundException("Wrong Credentials"));
+	}
+-----------------------------------------------------
+5.com.app.controller
+--------------------
+
+StudentController
+---------------------
+@RestController
+@RequestMapping("/students")
+public class StudentController {
+	
+	@Autowired
+	private StudentService userService;
+	
+	@Autowired
+	private ModelMapper mapper;
+
+	@PostMapping("/add")
+	public Student addStudent(@RequestBody StudentAdd studentdto) {
+		
+		Student student=mapper.map(studentdto,Student.class);
+		return userService.addStudent(student);
+		
+	}
+	
+	
+	@GetMapping("/{id}")
+	public Student getStudent(@PathVariable Integer id) {
+		return userService.getStudentById(id);
+	}
+	
+	@PutMapping("/{id}")
+	public Student updateStudent(@RequestBody StudentUpdateDto student) {
+		Student studentUpdate=mapper.map(student, Student.class);
+		return userService.updateStudent(studentUpdate);
+	}
+	
+	@DeleteMapping("/{id}")
+	public void deleteStudent(@PathVariable Integer id) {
+		 userService.deleteStudentById(id);
+	}
+}
+-----------------------------------------------------------------
+6.com.app.custom_exception
+--------------------------
+public class ResponseException extends RuntimeException {
+	public ResponseException(String mesg) {
+		super(mesg);
+	}
+
+}
+----------------------------------------------
+7.com.app.dto
+
+
+
+***************************************************************************
+NOTES(COURSES)
+
+com.app.service
+----------------
+Noteserviceimpl
+
+
+@Service
+@Transactional
+public class NoteServiceImpl implements NoteService {
+
+	@Autowired
+	private NoteRepository noteRepo;
+	
+	@Autowired
+	private UserService userService;
+	
+	@Autowired
+	private ModelMapper mapper;
+	
+	@PostConstruct
+	public void init(){
+		System.out.println("in init "+mapper);
+	}
+	
+	@Override
+	public Note addNewNote(Long userId, Note transientNote) {
+		User user = userService.fetchUserDetails(userId);
+		user.addNote(transientNote);
+		return noteRepo.save(transientNote);
+	}
+
+	@Override
+	public Note fetchNoteDetails(Long noteId) {
+		return noteRepo.findById(noteId).orElseThrow(() -> new ResourceNotFoundException("Invalid Note Id"));
+	}
+
+	@Override
+	public Note updateNoteDetails(Note detachedNote) {
+		if (noteRepo.existsById(detachedNote.getId())) {
+			return noteRepo.save(detachedNote);
+		}
+		throw new ResourceNotFoundException("Invalid Note Id : Updation Failed");
+	}
+
+	@Override
+	public String deleteNoteDetails(Long noteId) {
+		if (noteRepo.existsById(noteId)) {
+			noteRepo.deleteById(noteId);
+			return "Note deleted";
+		}
+		return "Deletion Failed : Invalid Id";
+	}
+
+	@Override
+	public List<Note> fetchNoteDetailsByUserId(User user) {
+		return noteRepo.findByUser(user);
+	}
+}
+
+
+com.app.controller
+--------------------
+
+@RestController
+@CrossOrigin(origins = "http://localhost:3000")
+@RequestMapping("/notes")
+public class NotesController {
+	@Autowired
+	private UserService userService;
+	
+	@Autowired
+	private NoteService noteService;
+	
+	@Autowired
+	private ModelMapper mapper;
+	
+	@PostMapping("/{userId}")
+	public Note saveNoteDetails(@PathVariable Long userId, @RequestBody InsertNoteDto newNoteDto){
+		Note newNote = mapper.map(newNoteDto, Note.class);
+		return noteService.addNewNote(userId, newNote);	
+	}
+	
+	@GetMapping("/{noteId}")
+	public Note getNoteDetails(@PathVariable Long noteId){
+		System.out.println("in get emp details "+noteId);
+		return noteService.fetchNoteDetails(noteId);
+	}
+	
+	@GetMapping("/userid/{userId}")
+	public List<Note> getNoteDetailsByUserId(@PathVariable Long userId){
+		User user = userService.fetchUserDetails(userId);
+		return noteService.fetchNoteDetailsByUserId(user);
+	}
+	
+	@DeleteMapping("/{noteId}")
+	public ApiResponse deleteNote(@PathVariable Long noteId)
+	{
+		System.out.println("in del emp "+noteId);
+		return new ApiResponse(noteService.deleteNoteDetails(noteId));
+	}
+	
+	@PutMapping("/{userId}")
+	public Note updateNoteDetails(@PathVariable Long userId, @RequestBody UpdateNoteDto detachedNoteDto){
+		Note detachedNote = mapper.map(detachedNoteDto, Note.class);
+		detachedNote.setUser(userService.fetchUserDetails(userId));
+		return noteService.updateNoteDetails(detachedNote);
+	}
+	
+}
+
+	
+------------------------------------------------------
+
+Swagger Link:localhost:8080/swagger-ui/index.html
+
+
+Footer
+© 2023 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Docs
+Contact GitHub
+Pricing
+API
+Training
+Blog
+About
+txt/txt (2).txt at main · Varadrajan41/txt
